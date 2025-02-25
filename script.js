@@ -135,54 +135,46 @@ function calculateRequirements(modelType, precision, concurrency, contextLength,
     };
     const dtype_bytes = n_dtype_bytes[precision];
 
-
-    const token_num = contextLength;
-
-
     // 1. 模型权重内存 (直接从常量读取)
     model_weights_memory_gb = modelSizesGB[modelType][precision];
 
-
-    // 2. KV Cache 内存 - 修复计算逻辑
+    // 2. KV Cache 内存 - 基于理论模型的计算
     let kvCacheSizeBytes = 0;
     
-    // 修复：使用更准确的KV Cache内存计算模型
-    // MoE模型和标准模型使用统一的计算方式，但对于MoE模型使用压缩维度
-    if (model_config.moe) { 
-        // MoE 模型 (R1 671B) - 使用压缩维度
-        kvCacheSizeBytes = concurrency * contextLength * model_config.layers * 2 * model_config.kv_compress_dim * dtype_bytes;
+    if (model_config.moe) {
+        // MoE 模型（R1 671B）- 使用压缩维度
+        // 这里的kv_compress_dim是一个优化参数，使得KV缓存比标准Transformer更小
+        const bytes_per_token = 2 * model_config.kv_compress_dim * dtype_bytes; // 2表示K和V
+        kvCacheSizeBytes = concurrency * contextLength * model_config.layers * bytes_per_token;
     } else {
-        // 标准 Transformer 模型 - 使用统一的计算公式
-        // 对于大模型，我们应考虑KV缓存优化的存在
-        // 一种常见的优化是通过减少KV缓存的大小来降低内存使用
-        
-        // 估算一个更合理的KV缓存大小
-        // 假设标准模型中每个token的KV缓存大小会随着模型大小的增加而降低比例
-        // 这是因为大模型通常会使用各种优化技术如GroupedQueryAttention等
-        const kv_scale_factor = Math.min(1.0, 10.0 / Math.sqrt(model_config.params)); // 模型越大，优化越多
-        
-        // 使用更合理的计算公式
-        kvCacheSizeBytes = concurrency * contextLength * model_config.layers * 2 * 
-                          model_config.kv_heads * model_config.head_dim * dtype_bytes * kv_scale_factor;
+        // 标准Transformer模型 - 使用标准公式
+        // 每个注意力头的KV缓存大小 = 2(K和V) * 头维度 * 数据类型字节数
+        const head_kv_bytes = 2 * model_config.head_dim * dtype_bytes;
+        // 每层的KV缓存 = 头数 * 每个头的KV缓存
+        const layer_kv_bytes = model_config.kv_heads * head_kv_bytes;
+        // 总KV缓存 = 并发数 * 上下文长度 * 层数 * 每层KV缓存
+        kvCacheSizeBytes = concurrency * contextLength * model_config.layers * layer_kv_bytes;
     }
     
+    // 转换为GB
     kv_cache_memory_gb = kvCacheSizeBytes / (1024 * 1024 * 1024);
 
-
-    // 3. 激活内存 - 也应该调整为更合理的比例
-    // 激活内存也会随着模型大小增加而采用更多优化
-    const activation_scale_factor = Math.min(1.0, 3.0 / Math.sqrt(model_config.params));
-    const activationSizeBytes = concurrency * contextLength * model_config.layers * 
-                               model_config.hidden_dim * dtype_bytes * activation_scale_factor;
+    // 3. 激活内存 - 基于理论模型的计算
+    // 激活内存与模型的复杂度和并发数成正比
+    // 每个token的激活内存大小与hidden_dim相关
+    const tokens_activation_bytes = model_config.hidden_dim * dtype_bytes;
+    // 标准的激活内存估算 - 一个简化模型
+    // 使用一个系数来表示平均每层每token的激活空间需求相对于hidden_dim的比例
+    const activation_ratio = model_config.moe ? 0.05 : 0.1; // MoE模型激活内存相对较小
+    const activationSizeBytes = concurrency * contextLength * model_config.layers * tokens_activation_bytes * activation_ratio;
     
+    // 转换为GB
     activation_memory_gb = activationSizeBytes / (1024 * 1024 * 1024);
-
 
     // 4. 总内存和碎片化内存
     estimatedMemoryGB = model_weights_memory_gb + kv_cache_memory_gb + activation_memory_gb;
     other_memory_gb = estimatedMemoryGB * 0.2; // 碎片化及其他开销 (20%)
     estimatedMemoryGB += other_memory_gb;
-
 
     const hardwareMemoryGB = {
         'nvidia_a10': 24,
@@ -205,7 +197,6 @@ function calculateRequirements(modelType, precision, concurrency, contextLength,
         machine_count = 0;
     }
 
-
     let deploymentFactorCompute = 1;
     if (model_config.params >= 70) { // 70B 及以上模型
         deployment_recommendation += " 建议采用多机多卡或模型并行等分布式部署策略。";
@@ -216,7 +207,6 @@ function calculateRequirements(modelType, precision, concurrency, contextLength,
     } else { // 小型模型 (7B 以下)
         deployment_recommendation += " 可以尝试单卡部署，或使用多卡并行以支持更高并发。";
     }
-
 
     let hardwareComputeFactor = 1;
     switch (hardware) {
@@ -232,7 +222,6 @@ function calculateRequirements(modelType, precision, concurrency, contextLength,
     }
     computeLoad = adjustComputeLoad(computeLoad, hardwareComputeFactor);
 
-
     if (framework === 'vllm') {
         computeLoad = adjustComputeLoad(computeLoad, 1.1);
         recommendation += " vLLM 框架通常能提供更高的推理吞吐量。";
@@ -247,7 +236,6 @@ function calculateRequirements(modelType, precision, concurrency, contextLength,
     } else {
         deployment_recommendation += " 通用部署建议：根据模型大小和并发需求，选择合适的推理框架。";
     }
-
 
     return {
         memory: estimatedMemoryGB.toFixed(2) + " GB (估算值)",
