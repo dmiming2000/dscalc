@@ -121,7 +121,7 @@ function calculateRequirements(modelType, precision, concurrency, contextLength,
         'r1_8b':   { params: 8, layers: 32, hidden_dim: 4096, kv_heads: 32, head_dim: 128, kv_compress_dim: null, moe: false },
         'r1_14b':  { params: 14, layers: 69, hidden_dim: 4096, kv_heads: 32, head_dim: 128, kv_compress_dim: null, moe: false },
         'r1_32b':  { params: 32, layers: 64, hidden_dim: 6400, kv_heads: 8, head_dim: 800, kv_compress_dim: null, moe: false },
-        'r1_70b':  { params: 70, layers: 80, hidden_dim: 8192, kv_heads: 64, head_dim: 128, kv_compress_dim: null, moe: false }
+        'r1_70b':  { params: 70, layers: 80, hidden_dim: 8192, kv_heads: 8, head_dim: 128, kv_compress_dim: null, moe: false }
     };
 
     const model_config = modelArchParams[modelType];
