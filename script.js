@@ -185,7 +185,9 @@ function calculateRequirements(modelType, precision, concurrency, contextLength,
         'nvidia_h800': 80,
         'nvidia_l40s': 48,
         'nvidia_rtx4090': 24,
-        'ascend910b': 56
+        'ascend910b64': 56,
+        'ascend910b32': 24,
+        'nvidia_l20': 48
     };
 
     hardwareRecommendation = calculateHardwareCount(estimatedMemoryGB, hardwareMemoryGB, hardware);
@@ -210,12 +212,14 @@ function calculateRequirements(modelType, precision, concurrency, contextLength,
 
     let hardwareComputeFactor = 1;
     switch (hardware) {
-        case 'ascend910b': hardwareComputeFactor = 0.8; computeLoad = adjustComputeLoad(computeLoad, 0.8); recommendation += " 昇腾910b 性能可能略低于同级别N卡。"; break;
+        case 'ascend910b64': hardwareComputeFactor = 0.8; computeLoad = adjustComputeLoad(computeLoad, 0.8); recommendation += " 昇腾910b 性能可能略低于同级别N卡。"; break;
+        case 'ascend910b32': hardwareComputeFactor = 0.8; computeLoad = adjustComputeLoad(computeLoad, 0.8); recommendation += " 昇腾910b 性能可能略低于同级别N卡,32g卡只适合70B及以下模型部署。"; break;
         case 'nvidia_a10': hardwareComputeFactor = 0.6; computeLoad = adjustComputeLoad(computeLoad, 0.6); recommendation += " A10 性能相对较低，适合中小型模型。"; break;
         case 'nvidia_a100': hardwareComputeFactor = 1.2; computeLoad = adjustComputeLoad(computeLoad, 1.2); break;
         case 'nvidia_a100_40g': hardwareComputeFactor = 1.1; computeLoad = adjustComputeLoad(computeLoad, 1.1); recommendation += " A100-40G 性能略低于 A100-80G。"; break;
         case 'nvidia_a800': hardwareComputeFactor = 1.1; computeLoad = adjustComputeLoad(computeLoad, 1.1); break;
         case 'nvidia_h20': hardwareComputeFactor = 1.3; computeLoad = adjustComputeLoad(computeLoad, 1.3); break;
+        case 'nvidia_l20': hardwareComputeFactor = 1.3; computeLoad = adjustComputeLoad(computeLoad, 1.0); break;
         case 'nvidia_h800': hardwareComputeFactor = 1.5; computeLoad = adjustComputeLoad(computeLoad, 1.5); computeLoad = "非常高"; recommendation = " H800/H20 是高性能卡，适合大型模型。"; break;
         case 'nvidia_rtx4090': hardwareComputeFactor = 0.9; computeLoad = adjustComputeLoad(computeLoad, 0.9); recommendation += " RTX 4090 消费级卡，性价比高，但显存可能受限。"; break;
         case 'nvidia_l40s': hardwareComputeFactor = 1.0; computeLoad = adjustComputeLoad(computeLoad, 1.0); break;
@@ -313,11 +317,13 @@ function getHardwareDisplayName(hardware) {
         'nvidia_h20': 'NVIDIA H20',
         'nvidia_h800': 'NVIDIA H800',
         'nvidia_a800': 'NVIDIA A800',
+        'nvidia_l20': 'NVIDIA L20',
         'nvidia_l40s': 'NVIDIA L40S',
         'nvidia_a10': 'NVIDIA A10',
         'nvidia_rtx4090': 'NVIDIA RTX 4090',
         'nvidia_a100_40g': 'NVIDIA A100-40G',
-        'ascend910b': '华为昇腾910b'
+        'ascend910b64': '华为昇腾910b64g',
+        'ascend910b32': '华为昇腾910b32g'
     };
     return hardwareDisplayNames[hardware] || hardware;
 }
