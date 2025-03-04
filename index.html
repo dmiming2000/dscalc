@@ -115,101 +115,17 @@
         </div>
 
         <button id="calculate-button">计算算力需求</button>
-<!-- 添加反馈按钮 -->
-<div class="feedback-button" onclick="showFeedbackForm()">
-  提供反馈
-</div>
-
-<!-- 反馈表单 -->
-<div id="feedback-modal" class="modal">
-  <div class="modal-content">
-    <span class="close" onclick="closeFeedbackForm()">&times;</span>
-    <h3>您的反馈对我们很重要</h3>
-    
-    <form id="feedback-form">
-      <div class="rating">
-        <span>评分：</span>
-        <div class="stars">
-          <input type="radio" id="star5" name="rating" value="5" /><label for="star5"></label>
-          <input type="radio" id="star4" name="rating" value="4" /><label for="star4"></label>
-          <input type="radio" id="star3" name="rating" value="3" /><label for="star3"></label>
-          <input type="radio" id="star2" name="rating" value="2" /><label for="star2"></label>
-          <input type="radio" id="star1" name="rating" value="1" /><label for="star1"></label>
-        </div>
-      </div>
-      
-      <div class="form-group">
-        <label for="feedback-text">您的建议或反馈：</label>
-        <textarea id="feedback-text" rows="5" placeholder="请输入您的建议..."></textarea>
-      </div>
-      
-      <div class="form-group">
-        <label for="feedback-email">电子邮箱（可选）：</label>
-        <input type="email" id="feedback-email" placeholder="您的邮箱（如果希望收到回复）" />
-      </div>
-      
-      <button type="submit" onclick="submitFeedback(event)">提交反馈</button>
-    </form>
-  </div>
-</div>
-
-<script>
-  function showFeedbackForm() {
-    document.getElementById('feedback-modal').style.display = 'block';
-  }
-  
-  function closeFeedbackForm() {
-    document.getElementById('feedback-modal').style.display = 'none';
-  }
-  
-  function submitFeedback(event) {
-    event.preventDefault();
-    
-    const rating = document.querySelector('input[name="rating"]:checked')?.value || 0;
-    const text = document.getElementById('feedback-text').value;
-    const email = document.getElementById('feedback-email').value;
-    
-    if (!text) {
-      alert('请输入您的反馈内容');
-      return;
-    }
-    
-    // 存储反馈到Firebase
-    const feedbackRef = db.ref('feedback').push();
-    feedbackRef.set({
-      rating: rating,
-      text: text,
-      email: email,
-      timestamp: Date.now(),
-      userAgent: navigator.userAgent,
-      userId: localStorage.getItem('dscalc_user_id')
-    })
-    .then(() => {
-      alert('感谢您的反馈！');
-      closeFeedbackForm();
-      document.getElementById('feedback-form').reset();
-    })
-    .catch(error => {
-      console.error("提交反馈失败: ", error);
-      alert('提交失败，请稍后再试');
-    });
-  }
-</script>
         <div id="results" class="results-section">
             <!-- 计算结果将显示在这里 -->
         </div>
     </div>
 
     <script src="script.js"></script>
-	<script type="module">
+<script type="module">
   // Import the functions you need from the SDKs you need
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
   import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-analytics.js";
-  // TODO: Add SDKs for Firebase products that you want to use
-  // https://firebase.google.com/docs/web/setup#available-libraries
 
-  // Your web app's Firebase configuration
-  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
   const firebaseConfig = {
     apiKey: "AIzaSyD5BTKwa8MlIr08v1FolkKnxb3dcIS2KHg",
     authDomain: "deepseek-calc.firebaseapp.com",
@@ -225,8 +141,7 @@
   const analytics = getAnalytics(app);
 </script>
 
-	<script>
-
+<script>
  // 初始化Firebase
   firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
