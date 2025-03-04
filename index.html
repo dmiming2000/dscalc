@@ -122,82 +122,112 @@
 
     <script src="script.js"></script>
 <script type="module">
-  // Import the functions you need from the SDKs you need
+  // 导入Firebase所需模块
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
   import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-analytics.js";
+  import { getDatabase, ref, set, onValue, get, child, increment, update } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-database.js";
 
+  // Firebase配置信息
   const firebaseConfig = {
     apiKey: "AIzaSyD5BTKwa8MlIr08v1FolkKnxb3dcIS2KHg",
     authDomain: "deepseek-calc.firebaseapp.com",
     projectId: "deepseek-calc",
-    storageBucket: "deepseek-calc.firebasestorage.app",
+    storageBucket: "deepseek-calc.appspot.com", // 注意：这里修正了storageBucket
     messagingSenderId: "322212337585",
     appId: "1:322212337585:web:3a73c0ec27b7cc74344f90",
-    measurementId: "G-CJF7TJJ17D"
+    measurementId: "G-CJF7TJJ17D",
+    databaseURL: "https://deepseek-calc-default-rtdb.firebaseio.com" // 添加您的数据库URL
   };
 
-  // Initialize Firebase
+  // 初始化Firebase
   const app = initializeApp(firebaseConfig);
   const analytics = getAnalytics(app);
-</script>
+  const db = getDatabase(app);
 
-<script>
- // 初始化Firebase
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
-  
-  // 记录访问并更新统计
-  function recordVisit() {
-    // 生成或获取用户唯一ID
-    let userId = localStorage.getItem('dscalc_user_id');
-    if (!userId) {
-      userId = 'user_' + Math.random().toString(36).substr(2, 9);
-      localStorage.setItem('dscalc_user_id', userId);
-      
-      // 增加总用户数
-      const totalRef = db.ref('statistics/total_users');
-      totalRef.transaction(currentTotal => (currentTotal || 0) + 1);
-    }
+  // 生成唯一用户ID或获取已存在的ID
+  let userId = localStorage.getItem('dscalc_user_id');
+  if (!userId) {
+    userId = 'user_' + Math.random().toString(36).substr(2, 9);
+    localStorage.setItem('dscalc_user_id', userId);
     
-    // 更新活跃用户
-    const activeRef = db.ref('statistics/active_users/' + userId);
-    activeRef.set(Date.now());
+    // 增加总用户数
+    const totalRef = ref(db, 'statistics/total_users');
+    get(totalRef).then((snapshot) => {
+      const currentTotal = snapshot.exists() ? snapshot.val() : 0;
+      set(totalRef, currentTotal + 1);
+    });
+  }
+
+  // 更新活跃用户
+  function updateActiveUser() {
+    if (!userId) return;
+    
+    const activeRef = ref(db, 'statistics/active_users/' + userId);
+    set(activeRef, Date.now());
     
     // 清理30分钟前不活跃的用户
     const cleanupTime = Date.now() - 30*60*1000;
-    db.ref('statistics/active_users').orderByValue().endAt(cleanupTime)
-      .once('value').then(snapshot => {
-        snapshot.forEach(child => {
-          child.ref.remove();
-        });
-      });
-      
-    // 获取并显示统计数据
-    updateStatistics();
+    const allActiveRef = ref(db, 'statistics/active_users');
+    
+    get(allActiveRef).then((snapshot) => {
+      if (snapshot.exists()) {
+        const users = snapshot.val();
+        for (const [key, lastActive] of Object.entries(users)) {
+          if (lastActive < cleanupTime) {
+            set(ref(db, 'statistics/active_users/' + key), null);
+          }
+        }
+      }
+    });
   }
-  
-  // 更新统计显示
-  function updateStatistics() {
-    db.ref('statistics/total_users').once('value').then(snapshot => {
-      document.getElementById('total-users').textContent = snapshot.val() || 0;
+
+  // 更新显示的统计数据
+  function updateStatisticsDisplay() {
+    const totalRef = ref(db, 'statistics/total_users');
+    get(totalRef).then((snapshot) => {
+      const totalElement = document.getElementById('total-users');
+      if (totalElement) {
+        totalElement.textContent = snapshot.exists() ? snapshot.val() : 0;
+      }
     });
     
-    db.ref('statistics/active_users').once('value').then(snapshot => {
-      document.getElementById('active-users').textContent = snapshot.numChildren() || 0;
+    const activeRef = ref(db, 'statistics/active_users');
+    get(activeRef).then((snapshot) => {
+      const activeElement = document.getElementById('active-users');
+      if (activeElement) {
+        let count = 0;
+        if (snapshot.exists()) {
+          // 统计在线用户
+          const users = snapshot.val();
+          count = Object.keys(users).length;
+        }
+        activeElement.textContent = count;
+      }
     });
   }
+
+  // 初始更新
+  updateActiveUser();
+  updateStatisticsDisplay();
   
-  // 页面加载时记录访问
-  window.addEventListener('load', recordVisit);
-  
-  // 定期更新活跃状态（每3分钟）
+  // 定期更新活跃状态和统计数据
   setInterval(() => {
     if (document.visibilityState === 'visible') {
-      const activeRef = db.ref('statistics/active_users/' + localStorage.getItem('dscalc_user_id'));
-      activeRef.set(Date.now());
-      updateStatistics();
+      updateActiveUser();
+      updateStatisticsDisplay();
     }
-  }, 3*60*1000);
+  }, 60000); // 每分钟更新一次
+  
+  // 页面关闭或切换时也更新一次
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      updateActiveUser();
+      updateStatisticsDisplay();
+    }
+  });
+
+  // 将Firebase数据库对象添加到全局作用域以便其他脚本访问
+  window.firebaseDB = db;
 </script>
 </body>
 </html>
