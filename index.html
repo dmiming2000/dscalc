@@ -122,13 +122,13 @@
     <script src="script.js"></script>
 <!-- Firebase脚本 - 放在页面底部</body>标签前 -->
 <script type="module">
-  // 导入Firebase所需模块
+  // Firebase 导入和配置部分保持不变
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
   import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-analytics.js";
-  import { getDatabase, ref, set, onValue, get, child, update } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-database.js";
+  import { getDatabase, ref, runTransaction, onValue, set } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-database.js";
 
-  // Firebase配置信息 - 使用正确的亚洲区域数据库URL
   const firebaseConfig = {
+    // 您的配置保持不变
     apiKey: "AIzaSyD5BTKwa8MlIr08v1FolkKnxb3dcIS2KHg",
     authDomain: "deepseek-calc.firebaseapp.com",
     projectId: "deepseek-calc",
@@ -136,186 +136,156 @@
     messagingSenderId: "322212337585",
     appId: "1:322212337585:web:3a73c0ec27b7cc74344f90",
     measurementId: "G-CJF7TJJ17D",
-    databaseURL: "https://deepseek-calc-default-rtdb.asia-southeast1.firebasedatabase.app" // 修正URL
+    databaseURL: "https://deepseek-calc-default-rtdb.asia-southeast1.firebasedatabase.app"
   };
-
-  console.log("正在初始化Firebase...");
 
   // 初始化Firebase
   const app = initializeApp(firebaseConfig);
   const analytics = getAnalytics(app);
   const db = getDatabase(app);
   
-  // 诊断函数：确保数据库结构存在
-  function initializeDatabase() {
-    console.log("检查并初始化数据库结构...");
-    const statsRef = ref(db, 'statistics');
-    get(statsRef).then((snapshot) => {
-      if (!snapshot.exists()) {
-        console.log("创建初始数据库结构...");
-        set(ref(db, 'statistics'), {
-          total_users: 0,
-          active_users: {}
-        }).then(() => {
-          console.log("数据库结构初始化成功");
-          updateStatisticsDisplay(); // 初始化后刷新显示
-        }).catch((error) => {
-          console.error("初始化数据库错误:", error);
-        });
-      } else {
-        console.log("数据库结构已存在，内容:", snapshot.val());
-      }
-    }).catch((error) => {
-      console.error("检查数据库结构时出错:", error);
-    });
+  // 设置调试日志
+  const DEBUG = true;
+  function log(message, data) {
+    if (DEBUG) {
+      console.log(`[DeepSeek统计] ${message}`, data || '');
+    }
   }
 
-  // 生成或获取用户ID
-  function setupUser() {
-    let userId = localStorage.getItem('dscalc_user_id');
+  // 用户识别和总数更新 - 使用更可靠的方法
+  function handleUserTracking() {
+    // 获取或创建用户ID
+    const storageKey = 'dscalc_user_id_v2'; // 修改键名避免与旧版冲突
+    let userId = localStorage.getItem(storageKey);
+    let isNewUser = false;
+    
     if (!userId) {
-      userId = 'user_' + Math.random().toString(36).substr(2, 9);
-      localStorage.setItem('dscalc_user_id', userId);
+      // 新用户
+      userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem(storageKey, userId);
+      isNewUser = true;
+      log('识别为新用户', userId);
+    } else {
+      log('识别为返回用户', userId);
+    }
+    
+    // 更新用户活跃状态
+    updateActiveUser(userId);
+    
+    // 仅对新用户增加总数计数，使用事务确保原子性
+    if (isNewUser) {
+      const totalUsersRef = ref(db, 'statistics/total_users');
       
-      // 增加总用户数
-      const totalRef = ref(db, 'statistics/total_users');
-      get(totalRef).then((snapshot) => {
-        const currentTotal = snapshot.exists() ? snapshot.val() : 0;
-        console.log("增加总用户计数，当前值:", currentTotal);
-        set(totalRef, currentTotal + 1);
-      }).catch(error => {
-        console.error("更新总用户数时出错:", error);
+      // 使用事务更新总用户数
+      runTransaction(totalUsersRef, (currentValue) => {
+        log('执行总用户数事务更新，当前值:', currentValue);
+        return (currentValue || 0) + 1;
+      }).then((result) => {
+        if (result.committed) {
+          log('总用户数更新成功，新值:', result.snapshot.val());
+        } else {
+          console.error('总用户数更新失败');
+        }
+      }).catch((error) => {
+        console.error('总用户数事务出错:', error);
       });
     }
+    
     return userId;
   }
-
-  // 更新活跃用户状态
+  
+  // 更新活跃用户
   function updateActiveUser(userId) {
     if (!userId) return;
     
-    console.log("更新活跃用户状态, ID:", userId);
+    const timestamp = Date.now();
     const activeRef = ref(db, 'statistics/active_users/' + userId);
-    set(activeRef, Date.now()).then(() => {
-      console.log("活跃用户状态已更新");
+    set(activeRef, timestamp).then(() => {
+      log('更新活跃状态成功');
+      cleanupInactiveUsers(timestamp);
     }).catch(error => {
-      console.error("更新活跃用户状态出错:", error);
+      console.error('更新活跃状态失败:', error);
     });
-    
-    // 清理30分钟前不活跃的用户
-    const cleanupTime = Date.now() - 30*60*1000;
+  }
+  
+  // 清理不活跃用户
+  function cleanupInactiveUsers(currentTime) {
+    const cutoffTime = currentTime - 30*60*1000; // 30分钟不活跃即清理
     const allActiveRef = ref(db, 'statistics/active_users');
     
-    get(allActiveRef).then((snapshot) => {
+    onValue(allActiveRef, (snapshot) => {
       if (snapshot.exists()) {
         const users = snapshot.val();
-        console.log("检查不活跃用户，当前活跃用户数:", Object.keys(users).length);
         let updates = {};
-        let changed = false;
+        let removedCount = 0;
         
-        for (const [key, lastActive] of Object.entries(users)) {
-          if (lastActive < cleanupTime) {
-            console.log("移除不活跃用户:", key);
-            updates[key] = null;
-            changed = true;
+        Object.entries(users).forEach(([key, lastActive]) => {
+          if (lastActive < cutoffTime) {
+            updates[key] = null; // Firebase方式删除节点
+            removedCount++;
           }
-        }
+        });
         
-        if (changed) {
-          update(ref(db, 'statistics/active_users'), updates).then(() => {
-            console.log("不活跃用户已清理");
-            updateStatisticsDisplay(); // 清理后刷新显示
-          });
+        if (removedCount > 0) {
+          log(`清理 ${removedCount} 个不活跃用户`);
+          const cleanupRef = ref(db, 'statistics/active_users');
+          // 批量更新，设置为null的键会被删除
+          set(cleanupRef, {...users, ...updates});
         }
       }
-    }).catch(error => {
-      console.error("清理不活跃用户时出错:", error);
-    });
+    }, { onlyOnce: true });
   }
-
-  // 更新统计数据显示
+  
+  // 更新UI显示
   function updateStatisticsDisplay() {
-    console.log("正在更新统计显示...");
-    
-    // 更新总用户数
     const totalRef = ref(db, 'statistics/total_users');
-    get(totalRef).then((snapshot) => {
+    const activeRef = ref(db, 'statistics/active_users');
+    
+    // 监听总用户数变化
+    onValue(totalRef, (snapshot) => {
+      const totalUsers = snapshot.exists() ? snapshot.val() : 0;
       const totalElement = document.getElementById('total-users');
       if (totalElement) {
-        const value = snapshot.exists() ? snapshot.val() : 0;
-        console.log("获取到总用户数:", value);
-        totalElement.textContent = value;
-      } else {
-        console.error("找不到total-users元素!");
+        log('更新总用户显示:', totalUsers);
+        totalElement.textContent = totalUsers;
       }
-    }).catch(error => {
-      console.error("获取总用户数时出错:", error);
     });
     
-    // 更新活跃用户数
-    const activeRef = ref(db, 'statistics/active_users');
-    get(activeRef).then((snapshot) => {
+    // 监听活跃用户数变化
+    onValue(activeRef, (snapshot) => {
+      const activeUsers = snapshot.exists() ? Object.keys(snapshot.val()).length : 0;
       const activeElement = document.getElementById('active-users');
       if (activeElement) {
-        let count = 0;
-        if (snapshot.exists()) {
-          count = Object.keys(snapshot.val()).length;
-        }
-        console.log("获取到活跃用户数:", count);
-        activeElement.textContent = count;
-      } else {
-        console.error("找不到active-users元素!");
+        log('更新在线用户显示:', activeUsers);
+        activeElement.textContent = activeUsers;
       }
-    }).catch(error => {
-      console.error("获取活跃用户数时出错:", error);
     });
   }
-
-  // 确保DOM元素加载后再初始化
+  
+  // 文档加载完成后初始化
   document.addEventListener('DOMContentLoaded', function() {
-    console.log("DOM已加载完成，开始初始化统计功能");
-    
-    // 检查统计显示元素
-    const totalElement = document.getElementById('total-users');
-    const activeElement = document.getElementById('active-users');
-    
-    if (!totalElement || !activeElement) {
-      console.error("统计显示元素未找到!");
-      return;
-    }
-    
-    // 初始化流程
-    initializeDatabase();
-    const userId = setupUser();
-    updateActiveUser(userId);
+    log('DOM加载完成，初始化统计系统');
+    handleUserTracking();
     updateStatisticsDisplay();
-    
-    // 设置定期更新
-    setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        updateActiveUser(userId);
-        updateStatisticsDisplay();
-      }
-    }, 60000); // 每分钟更新一次
-    
-    // 页面焦点变化时更新
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') {
-        updateActiveUser(userId);
-        updateStatisticsDisplay();
-      }
-    });
   });
-
-  // 立即执行一次（以防脚本在DOMContentLoaded之后加载）
+  
+  // 页面可见性变化时更新活跃状态
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') {
+      const userId = localStorage.getItem('dscalc_user_id_v2');
+      if (userId) {
+        updateActiveUser(userId);
+      }
+    }
+  });
+  
+  // 如果页面已加载，立即执行
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    console.log("页面已经加载，立即初始化");
     setTimeout(() => {
-      initializeDatabase();
-      const userId = setupUser();
-      updateActiveUser(userId);
+      log('页面已加载，立即初始化');
+      handleUserTracking();
       updateStatisticsDisplay();
-    }, 1000); // 稍微延迟以确保DOM元素存在
+    }, 100);
   }
 </script>
 </body>
