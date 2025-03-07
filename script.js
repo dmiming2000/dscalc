@@ -110,7 +110,7 @@ function calculateRequirements(modelType, precision, concurrency, contextLength,
         'r1_1.5b': { params: 1.5, layers: 28, hidden_dim: 2020, kv_heads: 3, head_dim: 673, kv_compress_dim: null, moe: false },
         'r1_7b':   { params: 7, layers: 34, hidden_dim: 4096, kv_heads: 32, head_dim: 128, kv_compress_dim: null, moe: false },
         'r1_8b':   { params: 8, layers: 32, hidden_dim: 4096, kv_heads: 32, head_dim: 128, kv_compress_dim: null, moe: false },
-        'r1_14b':  { params: 14, layers: 69, hidden_dim: 4096, kv_heads: 32, head_dim: 128, kv_compress_dim: null, moe: false },
+        'r1_14b':  { params: 14, layers: 69, hidden_dim: 4096, kv_heads: 8, head_dim: 128, kv_compress_dim: null, moe: false },
         'r1_32b':  { params: 32, layers: 64, hidden_dim: 5120, kv_heads: 8, head_dim: 128, kv_compress_dim: null, moe: false },
         'r1_70b':  { params: 70, layers: 80, hidden_dim: 8192, kv_heads: 8, head_dim: 128, kv_compress_dim: null, moe: false }
     };
